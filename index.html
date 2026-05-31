@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Parcel Grader</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b23; --panel2:#1d2530; --line:#2a3340;
+    --ink:#eef2f7; --dim:#8a97a8; --accent:#46e0b0; --accent2:#2ea3ff;
+    --warn:#ff6b6b; --ok:#46e0b0; --gold:#e8c46a;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    overflow:hidden; position:fixed; width:100%;
+    user-select:none;
+  }
+  .app{height:100vh; height:100dvh; display:flex; flex-direction:column; max-width:560px; margin:0 auto; position:relative}
+
+  /* top bar */
+  .topbar{padding:14px 18px 10px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line)}
+  .topbar .lot{font-family:ui-monospace,'SF Mono','Roboto Mono',Menlo,Consolas,monospace; font-weight:700; font-size:15px; letter-spacing:.5px}
+  .topbar .lot small{color:var(--dim); font-weight:500}
+  .topbar .step{font-size:12px; color:var(--dim); font-family:ui-monospace,'SF Mono','Roboto Mono',Menlo,Consolas,monospace}
+
+  /* tally bar */
+  .tally{display:flex; align-items:center; gap:10px; padding:8px 18px; background:var(--panel); border-bottom:1px solid var(--line)}
+  .tally .bar{flex:1; height:8px; background:var(--panel2); border-radius:99px; overflow:hidden}
+  .tally .fill{height:100%; width:0%; background:linear-gradient(90deg,var(--accent2),var(--accent)); transition:width .25s ease}
+  .tally .fill.over{background:var(--warn)}
+  .tally .count{font-family:ui-monospace,'SF Mono','Roboto Mono',Menlo,Consolas,monospace; font-weight:700; font-size:14px; min-width:74px; text-align:right}
+  .tally .count b{color:var(--accent)}
+  .tally .count.over b{color:var(--warn)}
+
+  /* screen area */
+  .screen{flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column}
+  .screen.center{justify-content:flex-start}
+
+  h1{font-size:13px; letter-spacing:2px; text-transform:uppercase; color:var(--dim); font-weight:700; margin-bottom:4px}
+
+  /* assortment prompt */
+  .bin-name{font-size:54px; font-weight:800; letter-spacing:-1px; line-height:1; margin:2px 0 2px}
+  .bin-desc{color:var(--dim); font-size:14px; margin-bottom:14px; min-height:20px}
+  .bin-cat{display:inline-block; font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; padding:3px 9px; border-radius:99px; margin-bottom:10px}
+  .cat-clar{background:rgba(46,163,255,.15); color:var(--accent2)}
+  .cat-col{background:rgba(232,196,106,.15); color:var(--gold)}
+  .cat-fluo{background:rgba(70,224,176,.15); color:var(--accent)}
+
+  .entry{
+    font-family:ui-monospace,'SF Mono','Roboto Mono',Menlo,Consolas,monospace; font-weight:700; font-size:64px;
+    text-align:center; padding:10px; background:var(--panel); border:2px solid var(--line);
+    border-radius:16px; margin-bottom:14px; min-height:96px; display:flex; align-items:center; justify-content:center;
+  }
+  .entry.empty{color:var(--dim)}
+  .entry .pct{font-size:22px; color:var(--accent); margin-left:12px}
+
+  /* keypad */
+  .pad{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:auto}
+  .key{
+    background:var(--panel2); border:1px solid var(--line); border-radius:14px;
+    font-family:ui-monospace,'SF Mono','Roboto Mono',Menlo,Consolas,monospace; font-weight:700; font-size:28px; color:var(--ink);
+    padding:18px 0; cursor:pointer; transition:transform .05s, background .15s;
+  }
+  .key:active{transform:scale(.95); background:var(--accent2); color:#001018}
+  .key.fn{font-size:18px; background:var(--panel); color:var(--dim)}
+  .key.fn:active{background:var(--warn); color:#fff}
+
+  .nav{display:flex; gap:10px; margin-top:12px}
+  .btn{
+    flex:1; padding:18px; border-radius:14px; border:none; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    font-weight:700; font-size:17px; cursor:pointer; transition:transform .05s,opacity .15s;
+  }
+  .btn:active{transform:scale(.98)}
+  .btn-next{background:var(--accent); color:#001813}
+  .btn-back{background:var(--panel2); color:var(--dim); flex:0 0 88px}
+  .btn-zero{background:var(--panel); color:var(--gold); border:1px solid var(--line); flex:0 0 110px}
+
+  /* form (start screen) */
+  .field{margin-bottom:14px}
+  .field label{display:block; font-size:12px; letter-spacing:1px; text-transform:uppercase; color:var(--dim); margin-bottom:6px; font-weight:600}
+  .field input, .field select{
+    width:100%; background:var(--panel); border:1.5px solid var(--line); border-radius:12px;
+    padding:15px; color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:17px; font-weight:600;
+  }
+  .field input:focus, .field select:focus{outline:none; border-color:var(--accent2)}
+  .sample-toggle{display:flex; gap:10px}
+  .sample-toggle .opt{flex:1; text-align:center; padding:15px; border-radius:12px; background:var(--panel); border:1.5px solid var(--line); font-weight:700; cursor:pointer}
+  .sample-toggle .opt.on{border-color:var(--accent); background:rgba(70,224,176,.12); color:var(--accent)}
+
+  /* results */
+  .res-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px}
+  .res-card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px}
+  .res-card .k{font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--dim); font-weight:600}
+  .res-card .v{font-family:ui-monospace,'SF Mono','Roboto Mono',Menlo,Consolas,monospace; font-weight:700; font-size:26px; margin-top:4px}
+  .res-card.big{grid-column:1/3; background:linear-gradient(135deg,var(--panel2),var(--panel))}
+  .res-card.big .v{font-size:34px; color:var(--accent)}
+  .breakdown{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:6px 14px; margin-bottom:12px}
+  .brow{display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line); font-size:14px}
+  .brow:last-child{border-bottom:none}
+  .brow .lab{font-weight:600}
+  .brow .val{font-family:ui-monospace,'SF Mono','Roboto Mono',Menlo,Consolas,monospace; color:var(--dim)}
+  .brow .val b{color:var(--ink)}
+  .section-lab{font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--accent2); font-weight:700; padding:10px 0 2px}
+
+  .price-input{width:100%; background:var(--panel); border:1.5px solid var(--line); border-radius:10px; padding:10px 12px; color:var(--ink); font-family:ui-monospace,'SF Mono','Roboto Mono',Menlo,Consolas,monospace; font-size:15px; font-weight:700; text-align:right}
+  .pi-row{display:grid; grid-template-columns:60px 1fr 90px; align-items:center; gap:10px; padding:7px 0}
+  .pi-row .nm{font-weight:700; font-family:ui-monospace,'SF Mono','Roboto Mono',Menlo,Consolas,monospace}
+  .pi-row .pc{color:var(--dim); font-size:13px; font-family:ui-monospace,'SF Mono','Roboto Mono',Menlo,Consolas,monospace}
+
+  .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--accent); color:#001813; padding:14px 22px; border-radius:12px; font-weight:700; transition:transform .3s; z-index:50; box-shadow:0 8px 30px rgba(0,0,0,.4)}
+  .toast.show{transform:translateX(-50%) translateY(0)}
+  .hidden{display:none!important}
+  .hint{color:var(--dim); font-size:12px; text-align:center; margin-top:10px}
+  .edit-chip{display:inline-flex; gap:6px; align-items:center; font-size:12px; color:var(--accent2); font-weight:600; margin-top:8px; cursor:pointer}
+  .month-head{display:flex; justify-content:space-between; align-items:center; padding:10px 0 6px; border-bottom:1px solid var(--line); font-weight:700; font-size:13px; color:var(--gold)}
+  .month-head .mdl{color:var(--accent); font-weight:700; cursor:pointer; font-size:12px}
+  .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:100; padding:24px}
+  .modal{background:var(--panel2); border:1px solid var(--line); border-radius:18px; padding:22px; width:100%; max-width:340px}
+  .modal-title{font-weight:700; font-size:16px; margin-bottom:14px}
+  .modal input{width:100%; background:var(--panel); border:1.5px solid var(--accent2); border-radius:12px; padding:14px; color:var(--ink); font-size:17px; font-weight:600; margin-bottom:14px}
+  .modal input:focus{outline:none}
+  .modal-btns{display:flex; gap:10px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="lot" id="topLot">— <small id="topName"></small></div>
+    <div class="step" id="topStep"></div>
+  </div>
+  <div class="tally hidden" id="tallyBar">
+    <span id="tallyLabel" style="font-size:12px;color:var(--dim);font-weight:600">CLARITY</span>
+    <div class="bar"><div class="fill" id="tallyFill"></div></div>
+    <div class="count" id="tallyCount"><b>0</b>/100</div>
+  </div>
+
+  <!-- START SCREEN -->
+  <div class="screen center" id="startScreen">
+    <h1>New Parcel</h1>
+    <div class="field">
+      <label>Lot Number</label>
+      <input id="inpLot" placeholder="e.g. AL846" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Name / Assortment</label>
+      <select id="inpName">
+        <option>Z Select</option><option>Z Select A</option><option>Z Select B</option>
+        <option>Z SELECT</option><option>Makeable</option>
+        <option value="__add__">+ Add new…</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Size (sieve)</label>
+      <select id="inpSize">
+        <option>+11</option><option>+9+7</option><option>-7+5</option><option>-5</option>
+        <option>-7</option><option>3GRS</option><option>2GRS</option>
+        <option value="__add__">+ Add new…</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Origin / Production</label>
+      <select id="inpOrigin">
+        <option>Stargems AG</option><option>Stargems Alluv SA</option>
+        <option value="__add__">+ Add new…</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Total Carats (optional now)</label>
+      <input id="inpCts" type="number" inputmode="decimal" placeholder="e.g. 45.59" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Sample Size</label>
+      <div class="sample-toggle">
+        <div class="opt on" data-s="100">100 pcs</div>
+        <div class="opt" data-s="50">50 pcs</div>
+      </div>
+    </div>
+    <div class="nav">
+      <button class="btn btn-next" id="startBtn">Start Grading →</button>
+    </div>
+    <div class="hint">You'll be asked every bin in order. Enter 0 to skip a bin — nothing is missed.</div>
+
+    <div id="sessionWrap" class="hidden" style="margin-top:22px">
+      <div class="section-lab" style="display:flex;justify-content:space-between;align-items:center">
+        <span id="sessionCount">Today's parcels (0)</span>
+        <span id="dlAllBtn" style="color:var(--accent);cursor:pointer;font-weight:700">⬇ Download all</span>
+      </div>
+      <div class="breakdown" id="sessionList"></div>
+    </div>
+  </div>
+
+  <!-- COUNT SCREEN -->
+  <div class="screen hidden" id="countScreen">
+    <div class="bin-cat" id="binCat">Clarity</div>
+    <div class="bin-name" id="binName">Z1</div>
+    <div class="bin-desc" id="binDesc">Fully clean — VVS</div>
+    <div class="entry empty" id="entry">0<span class="pct" id="entryPct"></span></div>
+    <div class="pad" id="pad"></div>
+    <div class="nav">
+      <button class="btn btn-back" id="backBtn">← Back</button>
+      <button class="btn btn-zero" id="zeroBtn">0 / Skip</button>
+      <button class="btn btn-next" id="nextBtn">Next →</button>
+    </div>
+  </div>
+
+  <!-- RESULTS SCREEN -->
+  <div class="screen hidden" id="resultScreen">
+    <h1 id="resTitle">Valuation</h1>
+    <div class="res-grid">
+      <div class="res-card big"><div class="k">Price $/ct (weighted)</div><div class="v" id="resPrice">$0.00</div></div>
+      <div class="res-card"><div class="k">Amount</div><div class="v" id="resAmount" style="font-size:22px">$0</div></div>
+      <div class="res-card"><div class="k">Total pcs</div><div class="v" id="resPcs">0</div></div>
+    </div>
+
+    <div class="section-lab">Enter prices per bin to value ($/ct)</div>
+    <div class="breakdown" id="priceInputs"></div>
+
+    <div class="section-lab">Clarity</div>
+    <div class="breakdown" id="resClarity"></div>
+    <div class="section-lab">Colour</div>
+    <div class="breakdown" id="resColour"></div>
+    <div class="section-lab">Fluorescence</div>
+    <div class="breakdown" id="resFluo"></div>
+
+    <div class="nav" style="margin-top:16px">
+      <button class="btn btn-back" id="resBackBtn" style="flex:0 0 88px">← Back</button>
+      <button class="btn btn-next" id="saveBtn">✓ Save to session</button>
+    </div>
+    <div class="nav">
+      <button class="btn btn-zero" id="exportBtn" style="flex:1">Export this row (CSV)</button>
+    </div>
+    <div class="hint">Save to session builds your day's list; download all at the end. CSV columns match your Excel.</div>
+  </div>
+</div>
+<div class="toast" id="toast">Saved</div>
+
+<div id="addModal" class="modal-bg hidden">
+  <div class="modal">
+    <div class="modal-title" id="addModalTitle">Add new option</div>
+    <input id="addModalInput" placeholder="Type new value" autocomplete="off">
+    <div class="modal-btns">
+      <button class="btn btn-back" id="addCancel" style="flex:1">Cancel</button>
+      <button class="btn btn-next" id="addConfirm" style="flex:1">Add</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- Safe storage (never throws, even in iOS Quick Look / private mode) ----
+const safeStore = (function(){
+  let mem={};          // in-memory fallback
+  let ok=true;
+  try{ const t='__t'; window.localStorage.setItem(t,'1'); window.localStorage.removeItem(t); }
+  catch(e){ ok=false; }
+  return {
+    get(k){ try{ return ok? window.localStorage.getItem(k) : (mem[k]||null); }catch(e){ return mem[k]||null; } },
+    set(k,v){ try{ if(ok) window.localStorage.setItem(k,v); else mem[k]=v; }catch(e){ mem[k]=v; } },
+    available(){ return ok; }
+  };
+})();
+
+// ---- Bin definitions in entry order ----
+const BINS = [
+  {k:'Z1', cat:'clarity', desc:'Fully clean — VVS'},
+  {k:'Z2', cat:'clarity', desc:'VS'},
+  {k:'Z3', cat:'clarity', desc:'SI'},
+  {k:'Z4', cat:'clarity', desc:'I1 quality'},
+  {k:'ZPK', cat:'clarity', desc:'Rejection — big inclusion'},
+  {k:'MB1', cat:'clarity', desc:'Makeable — best'},
+  {k:'MB2', cat:'clarity', desc:'Makeable — mid'},
+  {k:'MB3', cat:'clarity', desc:'Makeable — low'},
+  {k:'DEF', cat:'colour', desc:'Whitest'},
+  {k:'GH',  cat:'colour', desc:'Mid white'},
+  {k:'IJ',  cat:'colour', desc:'Slightly off colour'},
+  {k:'JK',  cat:'colour', desc:'Yellowish'},
+  {k:'STR', cat:'fluo', desc:'Strong fluorescence'},
+  {k:'MED', cat:'fluo', desc:'Medium fluorescence'},
+  {k:'NF',  cat:'fluo', desc:'None / Faint — auto (balance)', auto:true},
+];
+const CLARITY_BINS = BINS.filter(b=>b.cat==='clarity').map(b=>b.k);
+const FLUO_ASK = ['STR','MED'];   // NF is auto-calculated
+
+let state = {
+  lot:'', name:'', size:'', origin:'', cts:0, sample:100,
+  counts:{}, prices:{}, idx:0, buf:''
+};
+BINS.forEach(b=>state.counts[b.k]=0);
+// default prices (editable) seeded from your file averages
+Object.assign(state.prices, {Z1:160,Z2:150,Z3:100,Z4:50,ZPK:20,MB1:120,MB2:90,MB3:60});
+
+const $ = id => document.getElementById(id);
+
+// ---- Start screen ----
+document.querySelectorAll('.sample-toggle .opt').forEach(o=>{
+  o.onclick=()=>{
+    document.querySelectorAll('.sample-toggle .opt').forEach(x=>x.classList.remove('on'));
+    o.classList.add('on'); state.sample=+o.dataset.s;
+  };
+});
+$('startBtn').onclick=()=>{
+  state.lot = $('inpLot').value.trim() || '—';
+  state.name = $('inpName').value;
+  state.size = $('inpSize').value;
+  state.origin = $('inpOrigin').value;
+  state.cts = parseFloat($('inpCts').value)||0;
+  state.idx = 0; state.buf='';
+  $('topLot').firstChild.textContent = state.lot + ' ';
+  $('topName').textContent = state.name;
+  $('tallyBar').classList.remove('hidden');
+  showScreen('count'); renderBin();
+};
+
+// ---- Keypad ----
+const pad = $('pad');
+['1','2','3','4','5','6','7','8','9','⌫','0','✓'].forEach(label=>{
+  const b=document.createElement('button');
+  b.className='key'+((label==='⌫'||label==='✓')?' fn':'');
+  b.textContent=label;
+  b.onclick=()=>handleKey(label);
+  pad.appendChild(b);
+});
+function handleKey(label){
+  if(label==='⌫'){ state.buf=state.buf.slice(0,-1); }
+  else if(label==='✓'){ commitAndNext(); return; }
+  else { if(state.buf.length<3) state.buf+=label; }
+  updateEntry();
+}
+function updateEntry(){
+  const e=$('entry'); const v=state.buf===''?'0':state.buf;
+  e.classList.toggle('empty', state.buf==='');
+  const pct = state.sample? Math.round((+v/state.sample)*100):0;
+  e.innerHTML = v + (state.buf!==''?`<span class="pct">${pct}%</span>`:'');
+}
+
+// ---- Bin rendering ----
+function renderBin(){
+  const b=BINS[state.idx];
+  $('binCat').textContent = b.cat==='clarity'?'Clarity':b.cat==='colour'?'Colour':'Fluorescence';
+  $('binCat').className='bin-cat '+(b.cat==='clarity'?'cat-clar':b.cat==='colour'?'cat-col':'cat-fluo');
+  $('binName').textContent=b.k;
+  $('binDesc').textContent=b.desc;
+  state.buf = state.counts[b.k]? String(state.counts[b.k]):'';
+  updateEntry();
+  $('topStep').textContent=`${state.idx+1} / ${BINS.length}`;
+  updateTally();
+}
+function computeAutoFluo(){
+  // NF = sample - STR - MED, floored at 0
+  const str=state.counts['STR']||0, med=state.counts['MED']||0;
+  state.counts['NF']=Math.max(0, state.sample - str - med);
+}
+function commitAndNext(){
+  const b=BINS[state.idx];
+  state.counts[b.k]= state.buf===''?0:+state.buf;
+  // advance, skipping any auto bins (e.g. NF is auto-balanced)
+  let next=state.idx+1;
+  while(next<BINS.length && BINS[next].auto) next++;
+  if(next < BINS.length){ state.idx=next; state.buf=''; renderBin(); }
+  else { computeAutoFluo(); showResults(); }
+}
+$('nextBtn').onclick=commitAndNext;
+$('zeroBtn').onclick=()=>{ state.buf='0'; updateEntry(); commitAndNext(); };
+$('backBtn').onclick=()=>{
+  const b=BINS[state.idx]; state.counts[b.k]=state.buf===''?0:+state.buf;
+  let prev=state.idx-1;
+  while(prev>=0 && BINS[prev].auto) prev--;
+  if(prev>=0){ state.idx=prev; renderBin(); } else { showScreen('start'); $('tallyBar').classList.add('hidden'); }
+};
+
+function updateTally(){
+  const cur=BINS[state.idx];
+  let group, label;
+  if(cur.cat==='colour'){ group=['DEF','GH','IJ','JK']; label='COLOUR'; }
+  else if(cur.cat==='fluo'){ group=FLUO_ASK; label='FLUO'; }
+  else { group=CLARITY_BINS; label='CLARITY'; }
+  const groupTotal = group.reduce((s,k)=>s+(state.counts[k]||0),0);
+  let live=groupTotal;
+  if(group.includes(cur.k)){ live = groupTotal - (state.counts[cur.k]||0) + (state.buf===''?0:+state.buf); }
+  const pct=Math.min(100,(live/state.sample)*100);
+  $('tallyFill').style.width=pct+'%';
+  const over = live>state.sample;
+  $('tallyFill').classList.toggle('over',over);
+  $('tallyCount').classList.toggle('over',over);
+  $('tallyBar').style.opacity='1';
+  const tl=document.getElementById('tallyLabel'); if(tl) tl.textContent=label;
+  if(cur.cat==='fluo'){
+    // Show STR+MED entered, and what NF (balance) will be
+    const nf=Math.max(0, state.sample - live);
+    $('tallyCount').innerHTML = over
+      ? `<b>${live}</b>/${state.sample}`
+      : `NF auto <b>${nf}</b>`;
+  } else {
+    $('tallyCount').innerHTML=`<b>${live}</b>/${state.sample}`;
+  }
+}
+// live tally update on key
+const _upd=updateEntry; updateEntry=function(){_upd();updateTally();};
+
+// ---- Results ----
+function showResults(){
+  showScreen('result');
+  renderPriceInputs();
+  recompute();
+  renderBreakdowns();
+}
+function pctOf(k){ return state.sample? (state.counts[k]||0)/state.sample : 0; }
+function renderPriceInputs(){
+  const wrap=$('priceInputs'); wrap.innerHTML='';
+  CLARITY_BINS.forEach(k=>{
+    const row=document.createElement('div'); row.className='pi-row';
+    row.innerHTML=`<span class="nm">${k}</span><span class="pc">${Math.round(pctOf(k)*100)}% · ${state.counts[k]||0} pc</span>`;
+    const inp=document.createElement('input'); inp.className='price-input'; inp.type='number'; inp.inputMode='numeric';
+    inp.value=state.prices[k]||0; inp.placeholder='$';
+    inp.oninput=()=>{ state.prices[k]=parseFloat(inp.value)||0; recompute(); };
+    row.appendChild(inp); wrap.appendChild(row);
+  });
+}
+function recompute(){
+  let price=0;
+  CLARITY_BINS.forEach(k=>{ price += pctOf(k)*(state.prices[k]||0); });
+  const amount = price*state.cts;
+  const totalPcs = CLARITY_BINS.reduce((s,k)=>s+(state.counts[k]||0),0);
+  $('resPrice').textContent='$'+price.toFixed(2);
+  $('resAmount').textContent='$'+Math.round(amount).toLocaleString();
+  $('resPcs').textContent=totalPcs+(totalPcs!==state.sample?` ⚠︎`:'');
+  $('resTitle').textContent = totalPcs===state.sample? 'Valuation ✓' : `Valuation — clarity tallies ${totalPcs}, not ${state.sample}`;
+  state._price=price; state._amount=amount; state._totalPcs=totalPcs;
+}
+function renderBreakdowns(){
+  const fill=(elId,keys)=>{
+    const el=$(elId); el.innerHTML='';
+    keys.forEach(k=>{
+      const c=state.counts[k]||0; const p=Math.round(pctOf(k)*100);
+      const r=document.createElement('div'); r.className='brow';
+      r.innerHTML=`<span class="lab">${k}</span><span class="val"><b>${p}%</b> · ${c} pc</span>`;
+      el.appendChild(r);
+    });
+  };
+  fill('resClarity',CLARITY_BINS);
+  fill('resColour',['DEF','GH','IJ','JK']);
+  fill('resFluo',['STR','MED','NF']);
+}
+$('resBackBtn').onclick=()=>{ let i=BINS.length-1; while(i>0 && BINS[i].auto) i--; state.idx=i; showScreen('count'); renderBin(); };
+
+// ---- Session history (persisted in localStorage, by month) ----
+const STORE_KEY='parcelGrader.v1';
+let store = loadStore();         // { "2026-05": [parcel,...], ... }
+function loadStore(){
+  try{ return JSON.parse(safeStore.get(STORE_KEY)) || {}; }
+  catch(e){ return {}; }
+}
+function saveStore(){
+  try{ safeStore.set(STORE_KEY, JSON.stringify(store)); }
+  catch(e){ toast('⚠ Could not save — storage blocked'); }
+}
+function monthKey(dateStr){ return dateStr.slice(0,7); } // YYYY-MM
+function monthLabel(k){
+  const [y,m]=k.split('-');
+  const names=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${names[+m-1]} ${y}`;
+}
+const CSV_COLS=['Date','Lot','Name','Size','Origin','Cts',
+    'Z1','Z1$','Z2','Z2$','Z3','Z3$','Z4','Z4$','ZPK','ZPK$','MB1','MB1$','MB2','MB2$','MB3','MB3$',
+    'NF','MED','STR','DEF','GH','IJ','JK','PCS','Price','AMOUNT'];
+function currentRow(){
+  const today=new Date().toISOString().slice(0,10);
+  const f=k=>pctOf(k).toFixed(2);
+  return [today,state.lot,state.name,state.size,state.origin,state.cts,
+    f('Z1'),state.prices.Z1, f('Z2'),state.prices.Z2, f('Z3'),state.prices.Z3, f('Z4'),state.prices.Z4,
+    f('ZPK'),state.prices.ZPK, f('MB1'),state.prices.MB1, f('MB2'),state.prices.MB2, f('MB3'),state.prices.MB3,
+    f('NF'),f('MED'),f('STR'), f('DEF'),f('GH'),f('IJ'),f('JK'),
+    state._totalPcs, state._price.toFixed(2), Math.round(state._amount)];
+}
+function download(name, text){
+  const blob=new Blob([text],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=name; a.click();
+  URL.revokeObjectURL(url);
+}
+$('exportBtn').onclick=()=>{
+  const row=currentRow();
+  download(`${state.lot}_${row[0]}.csv`, CSV_COLS.join(',')+'\n'+row.join(','));
+  navigator.clipboard && navigator.clipboard.writeText(row.join('\t'));
+  toast('Row exported + copied');
+};
+$('saveBtn').onclick=()=>{
+  const row=currentRow();
+  const mk=monthKey(row[0]);
+  if(!store[mk]) store[mk]=[];
+  store[mk].push({lot:state.lot, name:state.name, price:state._price, amount:state._amount,
+                  pcs:state._totalPcs, sample:state.sample, date:row[0], row:row});
+  saveStore();
+  toast('Saved ✓');
+  resetForNew();
+  renderSession();
+  showScreen('start');
+  $('tallyBar').classList.add('hidden');
+};
+function resetForNew(){
+  BINS.forEach(b=>state.counts[b.k]=0);
+  $('inpLot').value=''; $('inpCts').value='';
+}
+function renderSession(){
+  const wrap=$('sessionWrap'); const list=$('sessionList');
+  const months=Object.keys(store).sort().reverse();
+  if(months.length===0){ wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  const total=months.reduce((s,m)=>s+store[m].length,0);
+  $('sessionCount').textContent=`Saved parcels (${total})`;
+  list.innerHTML='';
+  months.forEach(mk=>{
+    const head=document.createElement('div'); head.className='month-head';
+    head.innerHTML=`<span>${monthLabel(mk)} · ${store[mk].length}</span>`+
+      `<span class="mdl" data-m="${mk}">⬇ CSV</span>`;
+    list.appendChild(head);
+    store[mk].forEach((p)=>{
+      const r=document.createElement('div'); r.className='brow';
+      const flag = p.pcs!==p.sample ? ' ⚠︎':'';
+      r.innerHTML=`<span class="lab">${p.lot}${flag}</span>`+
+                  `<span class="val"><b>$${p.price.toFixed(0)}/ct</b> · $${Math.round(p.amount).toLocaleString()}</span>`;
+      list.appendChild(r);
+    });
+  });
+  list.querySelectorAll('.mdl').forEach(el=>{
+    el.onclick=()=>{
+      const mk=el.dataset.m;
+      const csv=CSV_COLS.join(',')+'\n'+store[mk].map(p=>p.row.join(',')).join('\n');
+      download(`parcels_${mk}.csv`, csv);
+      toast(`Downloaded ${monthLabel(mk)}`);
+    };
+  });
+}
+$('dlAllBtn').onclick=()=>{
+  const months=Object.keys(store).sort();
+  if(months.length===0){ toast('No parcels yet'); return; }
+  let rows=[]; months.forEach(m=>store[m].forEach(p=>rows.push(p.row)));
+  download(`parcels_all.csv`, CSV_COLS.join(',')+'\n'+rows.map(r=>r.join(',')).join('\n'));
+  toast(`Downloaded ${rows.length} parcels`);
+};
+
+function showScreen(name){
+  $('startScreen').classList.toggle('hidden',name!=='start');
+  $('countScreen').classList.toggle('hidden',name!=='count');
+  $('resultScreen').classList.toggle('hidden',name!=='result');
+}
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+
+// ---- Editable dropdowns (persisted) ----
+const DD_KEY='parcelGrader.dropdowns.v1';
+const DD_DEFAULTS={
+  inpName:['Z Select','Z Select A','Z Select B','Z SELECT','Makeable'],
+  inpSize:['+11','+9+7','-7+5','-5','-7','3GRS','2GRS'],
+  inpOrigin:['Stargems AG','Stargems Alluv SA']
+};
+function loadDropdowns(){
+  let saved={};
+  try{ saved=JSON.parse(safeStore.get(DD_KEY))||{}; }catch(e){ saved={}; }
+  // Always start from defaults, then layer any valid saved arrays on top.
+  const out={};
+  for(const id in DD_DEFAULTS){
+    out[id] = (Array.isArray(saved[id]) && saved[id].length) ? saved[id].slice() : DD_DEFAULTS[id].slice();
+  }
+  return out;
+}
+let dropdowns = loadDropdowns();
+function saveDropdowns(){ try{ safeStore.set(DD_KEY,JSON.stringify(dropdowns)); }catch(e){} }
+function populateSelect(id){
+  const sel=$(id); if(!sel) return;
+  const cur=sel.value;
+  const list=(dropdowns[id]&&dropdowns[id].length)?dropdowns[id]:DD_DEFAULTS[id];
+  sel.innerHTML='';
+  list.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+  const add=document.createElement('option'); add.value='__add__'; add.textContent='+ Add new…'; sel.appendChild(add);
+  if(cur && list.includes(cur)) sel.value=cur;
+}
+['inpName','inpSize','inpOrigin'].forEach(id=>{
+  populateSelect(id);
+  $(id).addEventListener('change',function(){
+    if(this.value==='__add__'){ openAddModal(id); this.value=(dropdowns[id]&&dropdowns[id][0])||DD_DEFAULTS[id][0]; }
+  });
+});
+
+// ---- Add-new modal (works in standalone/home-screen mode where prompt() fails) ----
+let addModalTarget=null;
+function openAddModal(id){
+  addModalTarget=id;
+  $('addModalInput').value='';
+  $('addModal').classList.remove('hidden');
+  setTimeout(()=>$('addModalInput').focus(),50);
+}
+function closeAddModal(){ $('addModal').classList.add('hidden'); addModalTarget=null; }
+function confirmAdd(){
+  const id=addModalTarget; if(!id) return;
+  const v=$('addModalInput').value;
+  if(v && v.trim()){
+    const val=v.trim();
+    if(!dropdowns[id].includes(val)) dropdowns[id].push(val);
+    saveDropdowns(); populateSelect(id); $(id).value=val;
+    toast('Added: '+val);
+  }
+  closeAddModal();
+}
+$('addConfirm').onclick=confirmAdd;
+$('addCancel').onclick=closeAddModal;
+$('addModalInput').addEventListener('keydown',e=>{ if(e.key==='Enter') confirmAdd(); });
+$('addModal').addEventListener('click',e=>{ if(e.target===$('addModal')) closeAddModal(); });
+
+// ---- Init on load: restore saved parcels ----
+try{ renderSession(); }catch(e){ /* non-fatal */ }
+if(!safeStore.available()){
+  try{ var h=document.querySelector('#startScreen .hint'); if(h) h.textContent="Note: this viewer can't save between sessions. For saving, open in Safari and Add to Home Screen."; }catch(e){}
+}
+</script>
+</body>
+</html>
