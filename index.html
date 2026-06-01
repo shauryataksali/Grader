@@ -155,8 +155,8 @@
     <div class="field">
       <label>Size (sieve)</label>
       <select id="inpSize">
-        <option>+11</option><option>+9+7</option><option>-7+5</option><option>-5</option>
-        <option>-7</option><option>3GRS</option><option>2GRS</option>
+        <option>6GRS</option><option>4GRS</option><option>3GRS</option><option>+11</option>
+        <option>+9</option><option>+7</option><option>+5</option><option>-5</option>
         <option value="__add__">+ Add new…</option>
       </select>
     </div>
@@ -180,6 +180,9 @@
     </div>
     <div class="nav">
       <button class="btn btn-next" id="startBtn">Start Grading →</button>
+    </div>
+    <div class="nav" style="margin-top:10px">
+      <button class="btn btn-zero" id="priceSettingsBtn" style="flex:1">⚙ Price Settings</button>
     </div>
     <div class="hint">You'll be asked every bin in order. Enter 0 to skip a bin — nothing is missed.</div>
 
@@ -234,6 +237,25 @@
     </div>
     <div class="hint">Save to session builds your day's list; download all at the end. CSV columns match your Excel.</div>
   </div>
+
+  <!-- PRICE SETTINGS SCREEN -->
+  <div class="screen hidden" id="priceScreen">
+    <h1>Price Settings ($/ct)</h1>
+    <div class="hint" style="text-align:left;margin:0 0 10px">Set your prices per size. Saved on this device until you change them. Leave blank/0 if not traded.</div>
+    <div class="field">
+      <label>Size</label>
+      <select id="priceSizeSel"></select>
+    </div>
+    <div class="breakdown" id="priceGrid"></div>
+    <div class="nav" style="margin-top:14px">
+      <button class="btn btn-back" id="priceBackBtn" style="flex:0 0 88px">← Back</button>
+      <button class="btn btn-next" id="priceSaveBtn">Save prices</button>
+    </div>
+    <div class="hint" id="priceCopyHint">Tip: set one size, then you can copy it to another.</div>
+    <div class="nav" style="margin-top:6px">
+      <button class="btn btn-zero" id="priceCopyBtn" style="flex:1">⧉ Copy these prices to another size</button>
+    </div>
+  </div>
 </div>
 <div class="toast" id="toast">Saved</div>
 
@@ -282,14 +304,29 @@ const BINS = [
 ];
 const CLARITY_BINS = BINS.filter(b=>b.cat==='clarity').map(b=>b.k);
 const FLUO_ASK = ['STR','MED'];   // NF is auto-calculated
+const SIZES = ['6GRS','4GRS','3GRS','+11','+9','+7','+5','-5'];
+const PRICE_KEY='parcelGrader.prices.v1';
 
 let state = {
   lot:'', name:'', size:'', origin:'', cts:0, sample:100,
   counts:{}, prices:{}, idx:0, buf:''
 };
 BINS.forEach(b=>state.counts[b.k]=0);
-// default prices (editable) seeded from your file averages
-Object.assign(state.prices, {Z1:160,Z2:150,Z3:100,Z4:50,ZPK:20,MB1:120,MB2:90,MB3:60});
+
+// Price book: { "6GRS": {Z1:160,...}, "+11": {...}, ... } — persisted, user-entered, starts blank
+function loadPriceBook(){
+  let pb={};
+  try{ pb=JSON.parse(safeStore.get(PRICE_KEY))||{}; }catch(e){ pb={}; }
+  return pb;
+}
+let priceBook = loadPriceBook();
+function savePriceBook(){ safeStore.set(PRICE_KEY, JSON.stringify(priceBook)); }
+// Load saved prices for a given size into state.prices (blank if none set)
+function applyPricesForSize(size){
+  const saved = priceBook[size] || {};
+  state.prices = {};
+  CLARITY_BINS.forEach(k=>{ state.prices[k] = (saved[k]!==undefined && saved[k]!=='') ? Number(saved[k]) : 0; });
+}
 
 const $ = id => document.getElementById(id);
 
@@ -306,6 +343,7 @@ $('startBtn').onclick=()=>{
   state.size = $('inpSize').value;
   state.origin = $('inpOrigin').value;
   state.cts = parseFloat($('inpCts').value)||0;
+  applyPricesForSize(state.size);   // load saved prices for this size
   state.idx = 0; state.buf='';
   $('topLot').firstChild.textContent = state.lot + ' ';
   $('topName').textContent = state.name;
@@ -414,7 +452,14 @@ function renderPriceInputs(){
     row.innerHTML=`<span class="nm">${k}</span><span class="pc">${Math.round(pctOf(k)*100)}% · ${state.counts[k]||0} pc</span>`;
     const inp=document.createElement('input'); inp.className='price-input'; inp.type='number'; inp.inputMode='numeric';
     inp.value=state.prices[k]||0; inp.placeholder='$';
-    inp.oninput=()=>{ state.prices[k]=parseFloat(inp.value)||0; recompute(); };
+    inp.oninput=()=>{
+      state.prices[k]=parseFloat(inp.value)||0;
+      // persist this edit into the price book for the current size
+      if(!priceBook[state.size]) priceBook[state.size]={};
+      priceBook[state.size][k]=state.prices[k];
+      savePriceBook();
+      recompute();
+    };
     row.appendChild(inp); wrap.appendChild(row);
   });
 }
@@ -462,18 +507,36 @@ function monthLabel(k){
   const names=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return `${names[+m-1]} ${y}`;
 }
-const CSV_COLS=['Date','Lot','Name','Size','Origin','Cts',
-    'Z1','Z1$','Z2','Z2$','Z3','Z3$','Z4','Z4$','ZPK','ZPK$','MB1','MB1$','MB2','MB2$','MB3','MB3$',
-    'NF','MED','STR','DEF','GH','IJ','JK','PCS','Price','AMOUNT'];
+// Master file column order (matches the user's Excel exactly, 48 columns)
+const CSV_COLS=['Date','Broker','Check by','Lot','Name','Size','Av Size','PCS/Cts','Cts','Origin',
+  '% diff last time','Last price','Bid price','AMOUNT','Price',
+  'Z1','Z1 $','Z2','Z2 $','Z3','Z3 $','Z4','Z4 $','ZPK','ZPK $','MB1','MB1 $','MB2','MB2 $','MB3','MB3 $',
+  'NF','MED','STR','Yellow','DEF','GH','IJ','JK','PCS','CTS','YIELD','Bought Price','Asking','comments',
+  'CLARITY','FLUO','COLOUR'];
 function currentRow(){
   const today=new Date().toISOString().slice(0,10);
-  const f=k=>pctOf(k).toFixed(2);
-  return [today,state.lot,state.name,state.size,state.origin,state.cts,
-    f('Z1'),state.prices.Z1, f('Z2'),state.prices.Z2, f('Z3'),state.prices.Z3, f('Z4'),state.prices.Z4,
-    f('ZPK'),state.prices.ZPK, f('MB1'),state.prices.MB1, f('MB2'),state.prices.MB2, f('MB3'),state.prices.MB3,
-    f('NF'),f('MED'),f('STR'), f('DEF'),f('GH'),f('IJ'),f('JK'),
-    state._totalPcs, state._price.toFixed(2), Math.round(state._amount)];
+  const f=k=>pctOf(k).toFixed(2);            // clarity/colour/fluo as fractions (0.47), matching your file
+  const price=state._price.toFixed(2);
+  const cts=state.cts||'';
+  const avSize=(state.cts && state._totalPcs)? (state.cts/state._totalPcs).toFixed(3):'';
+  const pcsPerCt=(state.cts && state._totalPcs)? (state._totalPcs/state.cts).toFixed(2):'';
+  const amount=state.cts? Math.round(state._price*state.cts):'';
+  const pr=k=>{ const v=state.prices[k]; return (v===undefined||v===''||v===0)?'':v; };
+  return [
+    today, '', '', state.lot, state.name, state.size, avSize, pcsPerCt, cts, state.origin,
+    '', '', '', amount, price,
+    f('Z1'),pr('Z1'), f('Z2'),pr('Z2'), f('Z3'),pr('Z3'), f('Z4'),pr('Z4'),
+    f('ZPK'),pr('ZPK'), f('MB1'),pr('MB1'), f('MB2'),pr('MB2'), f('MB3'),pr('MB3'),
+    f('NF'),f('MED'),f('STR'), '', f('DEF'),f('GH'),f('IJ'),f('JK'),
+    state._totalPcs, cts, '', '', '', '',
+    '', '', ''
+  ];
 }
+function csvCell(v){
+  const s=String(v==null?'':v);
+  return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+function rowToCsv(arr){ return arr.map(csvCell).join(','); }
 function download(name, text){
   const blob=new Blob([text],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
@@ -482,7 +545,7 @@ function download(name, text){
 }
 $('exportBtn').onclick=()=>{
   const row=currentRow();
-  download(`${state.lot}_${row[0]}.csv`, CSV_COLS.join(',')+'\n'+row.join(','));
+  download(`${state.lot}_${row[0]}.csv`, CSV_COLS.map(csvCell).join(',')+'\n'+rowToCsv(row));
   navigator.clipboard && navigator.clipboard.writeText(row.join('\t'));
   toast('Row exported + copied');
 };
@@ -527,7 +590,7 @@ function renderSession(){
   list.querySelectorAll('.mdl').forEach(el=>{
     el.onclick=()=>{
       const mk=el.dataset.m;
-      const csv=CSV_COLS.join(',')+'\n'+store[mk].map(p=>p.row.join(',')).join('\n');
+      const csv=CSV_COLS.map(csvCell).join(',')+'\n'+store[mk].map(p=>rowToCsv(p.row)).join('\n');
       download(`parcels_${mk}.csv`, csv);
       toast(`Downloaded ${monthLabel(mk)}`);
     };
@@ -537,7 +600,7 @@ $('dlAllBtn').onclick=()=>{
   const months=Object.keys(store).sort();
   if(months.length===0){ toast('No parcels yet'); return; }
   let rows=[]; months.forEach(m=>store[m].forEach(p=>rows.push(p.row)));
-  download(`parcels_all.csv`, CSV_COLS.join(',')+'\n'+rows.map(r=>r.join(',')).join('\n'));
+  download(`parcels_all.csv`, CSV_COLS.map(csvCell).join(',')+'\n'+rows.map(r=>rowToCsv(r)).join('\n'));
   toast(`Downloaded ${rows.length} parcels`);
 };
 
@@ -545,6 +608,7 @@ function showScreen(name){
   $('startScreen').classList.toggle('hidden',name!=='start');
   $('countScreen').classList.toggle('hidden',name!=='count');
   $('resultScreen').classList.toggle('hidden',name!=='result');
+  $('priceScreen').classList.toggle('hidden',name!=='price');
 }
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
 
@@ -552,7 +616,7 @@ function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('sho
 const DD_KEY='parcelGrader.dropdowns.v1';
 const DD_DEFAULTS={
   inpName:['Z Select','Z Select A','Z Select B','Z SELECT','Makeable'],
-  inpSize:['+11','+9+7','-7+5','-5','-7','3GRS','2GRS'],
+  inpSize:['6GRS','4GRS','3GRS','+11','+9','+7','+5','-5'],
   inpOrigin:['Stargems AG','Stargems Alluv SA']
 };
 function loadDropdowns(){
@@ -607,6 +671,77 @@ $('addConfirm').onclick=confirmAdd;
 $('addCancel').onclick=closeAddModal;
 $('addModalInput').addEventListener('keydown',e=>{ if(e.key==='Enter') confirmAdd(); });
 $('addModal').addEventListener('click',e=>{ if(e.target===$('addModal')) closeAddModal(); });
+
+// ---- Price Settings screen ----
+function sizeListForPrices(){
+  // start from canonical SIZES, then add any custom sizes the user created in the size dropdown
+  const extra=(dropdowns.inpSize||[]).filter(s=>s!=='__add__' && !SIZES.includes(s));
+  return SIZES.concat(extra);
+}
+function populatePriceSizeSel(){
+  const sel=$('priceSizeSel'); const cur=sel.value;
+  sel.innerHTML='';
+  sizeListForPrices().forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; sel.appendChild(o); });
+  if(cur && sizeListForPrices().includes(cur)) sel.value=cur;
+}
+function renderPriceGrid(){
+  const size=$('priceSizeSel').value;
+  const saved=priceBook[size]||{};
+  const grid=$('priceGrid'); grid.innerHTML='';
+  CLARITY_BINS.forEach(k=>{
+    const row=document.createElement('div'); row.className='pi-row';
+    row.innerHTML=`<span class="nm">${k}</span><span class="pc">$/ct</span>`;
+    const inp=document.createElement('input'); inp.className='price-input'; inp.type='number'; inp.inputMode='numeric';
+    inp.placeholder='—';
+    inp.value=(saved[k]!==undefined && saved[k]!=='')?saved[k]:'';
+    inp.dataset.bin=k;
+    grid.appendChild(row); row.appendChild(inp);
+  });
+}
+function readPriceGrid(){
+  const size=$('priceSizeSel').value;
+  if(!priceBook[size]) priceBook[size]={};
+  $('priceGrid').querySelectorAll('input').forEach(inp=>{
+    const k=inp.dataset.bin;
+    const v=inp.value.trim();
+    priceBook[size][k] = v===''?'':Number(v);
+  });
+}
+$('priceSettingsBtn').onclick=()=>{ populatePriceSizeSel(); renderPriceGrid(); showScreen('price'); };
+$('priceSizeSel').onchange=()=>{ renderPriceGrid(); };
+$('priceBackBtn').onclick=()=>{ readPriceGrid(); savePriceBook(); showScreen('start'); };
+$('priceSaveBtn').onclick=()=>{ readPriceGrid(); savePriceBook(); toast('Prices saved for '+$('priceSizeSel').value); };
+$('priceCopyBtn').onclick=()=>{
+  readPriceGrid(); savePriceBook();
+  const from=$('priceSizeSel').value;
+  openCopyModal(from);
+};
+// Copy-prices modal reuses the add modal pattern
+function openCopyModal(from){
+  const targets=sizeListForPrices().filter(s=>s!==from);
+  const choice=buildSimplePicker('Copy '+from+' prices to:', targets, (to)=>{
+    priceBook[to]=Object.assign({}, priceBook[from]);
+    savePriceBook();
+    toast('Copied '+from+' → '+to);
+  });
+}
+// Minimal picker built on the existing modal styles
+function buildSimplePicker(title, options, onPick){
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  const m=document.createElement('div'); m.className='modal';
+  const t=document.createElement('div'); t.className='modal-title'; t.textContent=title; m.appendChild(t);
+  options.forEach(opt=>{
+    const b=document.createElement('button'); b.className='btn btn-zero'; b.style.width='100%'; b.style.marginBottom='8px'; b.textContent=opt;
+    b.onclick=()=>{ onPick(opt); document.body.removeChild(bg); };
+    m.appendChild(b);
+  });
+  const c=document.createElement('button'); c.className='btn btn-back'; c.style.width='100%'; c.textContent='Cancel';
+  c.onclick=()=>document.body.removeChild(bg);
+  m.appendChild(c);
+  bg.appendChild(m); bg.onclick=(e)=>{ if(e.target===bg) document.body.removeChild(bg); };
+  document.body.appendChild(bg);
+  return bg;
+}
 
 // ---- Init on load: restore saved parcels ----
 try{ renderSession(); }catch(e){ /* non-fatal */ }
