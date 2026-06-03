@@ -17,7 +17,10 @@
     font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     overflow:hidden; position:fixed; width:100%;
     user-select:none;
+    touch-action:manipulation;            /* prevents double-tap-to-zoom */
+    -webkit-text-size-adjust:100%;
   }
+  button, .key, .btn, .opt{ touch-action:manipulation; }
   .app{height:100vh; height:100dvh; display:flex; flex-direction:column; max-width:560px; margin:0 auto; position:relative}
 
   /* top bar */
@@ -168,11 +171,15 @@
       </select>
     </div>
     <div class="field">
-      <label>Total Carats (optional now)</label>
-      <input id="inpCts" type="number" inputmode="decimal" placeholder="e.g. 45.59" autocomplete="off">
+      <label>Average Size measurement</label>
+      <div style="display:flex; gap:10px">
+        <input id="inpWeighPcs" type="number" inputmode="numeric" placeholder="pieces weighed" autocomplete="off" style="flex:1">
+        <input id="inpWeighCts" type="number" inputmode="decimal" placeholder="weight (cts)" autocomplete="off" style="flex:1">
+      </div>
+      <div id="avSizeReadout" class="hint" style="text-align:left;margin-top:8px">Enter pieces + weight → Av size and pcs/ct calculate automatically.</div>
     </div>
     <div class="field">
-      <label>Sample Size</label>
+      <label>Sample Size (for grading %)</label>
       <div class="sample-toggle">
         <div class="opt on" data-s="100">100 pcs</div>
         <div class="opt" data-s="50">50 pcs</div>
@@ -309,6 +316,7 @@ const PRICE_KEY='parcelGrader.prices.v1';
 
 let state = {
   lot:'', name:'', size:'', origin:'', cts:0, sample:100,
+  weighPcs:0, weighCts:0, avSize:0, pcsPerCt:0,
   counts:{}, prices:{}, idx:0, buf:''
 };
 BINS.forEach(b=>state.counts[b.k]=0);
@@ -337,12 +345,31 @@ document.querySelectorAll('.sample-toggle .opt').forEach(o=>{
     o.classList.add('on'); state.sample=+o.dataset.s;
   };
 });
+function updateAvSizeReadout(){
+  const pcs=parseFloat($('inpWeighPcs').value)||0;
+  const cts=parseFloat($('inpWeighCts').value)||0;
+  const el=$('avSizeReadout');
+  if(pcs>0 && cts>0){
+    const avSize=cts/pcs;
+    const pcsPerCt=pcs/cts;
+    el.innerHTML=`Av size <b style="color:var(--accent)">${avSize.toFixed(3)}</b> ct/stone &nbsp;·&nbsp; <b style="color:var(--accent)">${pcsPerCt.toFixed(2)}</b> pcs/ct`;
+  } else {
+    el.textContent='Enter pieces + weight → Av size and pcs/ct calculate automatically.';
+  }
+}
+$('inpWeighPcs').addEventListener('input',updateAvSizeReadout);
+$('inpWeighCts').addEventListener('input',updateAvSizeReadout);
+
 $('startBtn').onclick=()=>{
   state.lot = $('inpLot').value.trim() || '—';
   state.name = $('inpName').value;
   state.size = $('inpSize').value;
   state.origin = $('inpOrigin').value;
-  state.cts = parseFloat($('inpCts').value)||0;
+  state.weighPcs = parseFloat($('inpWeighPcs').value)||0;
+  state.weighCts = parseFloat($('inpWeighCts').value)||0;
+  state.avSize = (state.weighPcs>0 && state.weighCts>0)? state.weighCts/state.weighPcs : 0;
+  state.pcsPerCt = (state.weighPcs>0 && state.weighCts>0)? state.weighPcs/state.weighCts : 0;
+  state.cts = state.weighCts;   // weight of the measured sample
   applyPricesForSize(state.size);   // load saved prices for this size
   state.idx = 0; state.buf='';
   $('topLot').firstChild.textContent = state.lot + ' ';
@@ -517,10 +544,10 @@ function currentRow(){
   const today=new Date().toISOString().slice(0,10);
   const f=k=>pctOf(k).toFixed(2);            // clarity/colour/fluo as fractions (0.47), matching your file
   const price=state._price.toFixed(2);
-  const cts=state.cts||'';
-  const avSize=(state.cts && state._totalPcs)? (state.cts/state._totalPcs).toFixed(3):'';
-  const pcsPerCt=(state.cts && state._totalPcs)? (state._totalPcs/state.cts).toFixed(2):'';
-  const amount=state.cts? Math.round(state._price*state.cts):'';
+  const cts=state.weighCts||'';
+  const avSize=state.avSize? state.avSize.toFixed(3):'';
+  const pcsPerCt=state.pcsPerCt? state.pcsPerCt.toFixed(2):'';
+  const amount=state.weighCts? Math.round(state._price*state.weighCts):'';
   const pr=k=>{ const v=state.prices[k]; return (v===undefined||v===''||v===0)?'':v; };
   return [
     today, '', '', state.lot, state.name, state.size, avSize, pcsPerCt, cts, state.origin,
@@ -564,7 +591,9 @@ $('saveBtn').onclick=()=>{
 };
 function resetForNew(){
   BINS.forEach(b=>state.counts[b.k]=0);
-  $('inpLot').value=''; $('inpCts').value='';
+  $('inpLot').value=''; $('inpWeighPcs').value=''; $('inpWeighCts').value='';
+  state.weighPcs=0; state.weighCts=0; state.avSize=0; state.pcsPerCt=0; state.cts=0;
+  if($('avSizeReadout')) updateAvSizeReadout();
 }
 function renderSession(){
   const wrap=$('sessionWrap'); const list=$('sessionList');
