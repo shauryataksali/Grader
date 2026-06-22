@@ -173,8 +173,8 @@
     <div class="field">
       <label>Average Size measurement</label>
       <div style="display:flex; gap:10px">
-        <input id="inpWeighPcs" type="number" inputmode="numeric" placeholder="pieces weighed" autocomplete="off" style="flex:1">
-        <input id="inpWeighCts" type="number" inputmode="decimal" placeholder="weight (cts)" autocomplete="off" style="flex:1">
+        <input id="inpWeighPcs" type="text" inputmode="numeric" placeholder="pieces weighed" autocomplete="off" style="flex:1">
+        <input id="inpWeighCts" type="text" inputmode="decimal" placeholder="weight (cts)" autocomplete="off" style="flex:1">
       </div>
       <div id="avSizeReadout" class="hint" style="text-align:left;margin-top:8px">Enter pieces + weight → Av size and pcs/ct calculate automatically.</div>
     </div>
@@ -345,9 +345,10 @@ document.querySelectorAll('.sample-toggle .opt').forEach(o=>{
     o.classList.add('on'); state.sample=+o.dataset.s;
   };
 });
+function parseNum(v){ return parseFloat(String(v==null?'':v).replace(',', '.'))||0; }
 function updateAvSizeReadout(){
-  const pcs=parseFloat($('inpWeighPcs').value)||0;
-  const cts=parseFloat($('inpWeighCts').value)||0;
+  const pcs=parseNum($('inpWeighPcs').value);
+  const cts=parseNum($('inpWeighCts').value);
   const el=$('avSizeReadout');
   if(pcs>0 && cts>0){
     const avSize=cts/pcs;
@@ -365,8 +366,8 @@ $('startBtn').onclick=()=>{
   state.name = $('inpName').value;
   state.size = $('inpSize').value;
   state.origin = $('inpOrigin').value;
-  state.weighPcs = parseFloat($('inpWeighPcs').value)||0;
-  state.weighCts = parseFloat($('inpWeighCts').value)||0;
+  state.weighPcs = parseNum($('inpWeighPcs').value);
+  state.weighCts = parseNum($('inpWeighCts').value);
   state.avSize = (state.weighPcs>0 && state.weighCts>0)? state.weighCts/state.weighPcs : 0;
   state.pcsPerCt = (state.weighPcs>0 && state.weighCts>0)? state.weighPcs/state.weighCts : 0;
   state.cts = state.weighCts;   // weight of the measured sample
